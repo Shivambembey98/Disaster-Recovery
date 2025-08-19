@@ -24,7 +24,7 @@ jobs:
             --output text)
 
           echo "AMI_ID=$AMI_ID" >> $GITHUB_ENV
-          echo "✅ Using AMI: $AMI_ID"
+          echo "Using AMI: $AMI_ID"
 
       - name: Launch New EC2
         id: launch
@@ -45,12 +45,12 @@ jobs:
             --output text)
 
           echo "NEW_INSTANCE_ID=$NEW_INSTANCE_ID" >> $GITHUB_ENV
-          echo "✅ Launched new instance: $NEW_INSTANCE_ID"
+          echo "Launched new instance: $NEW_INSTANCE_ID"
 
       - name: Wait for Instance Ready
         run: |
           aws ec2 wait instance-status-ok --instance-ids ${{ env.NEW_INSTANCE_ID }}
-          echo "✅ New instance is running and healthy."
+          echo "New instance is running and healthy."
 
       - name: Attach Old Elastic IP
         run: |
@@ -58,7 +58,7 @@ jobs:
           aws ec2 associate-address \
             --instance-id ${{ env.NEW_INSTANCE_ID }} \
             --allocation-id $EIP_ALLOC_ID
-          echo "✅ Elastic IP attached."
+          echo "Elastic IP attached."
 
       - name: Restart Docker Containers
         run: |
@@ -72,4 +72,4 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/my-key.pem ubuntu@$PUBLIC_IP \
             "sudo docker start \$(sudo docker ps -aq) && \
              sudo systemctl restart nginx && \
-             echo '✅ Containers and Nginx restarted'"
+             echo 'Containers and Nginx restarted'"

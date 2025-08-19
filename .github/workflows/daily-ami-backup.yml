@@ -2,8 +2,8 @@ name: Daily AMI Backup
 
 on:
   schedule:
-    - cron: "0 13 * * *"   # 7 PM IST = 13:00 UTC
-  workflow_dispatch:       # Allow manual trigger too
+    - cron: "30 13 * * *" # 7 PM IST = 13:30 UTC
+  workflow_dispatch: # allow manual run too
 
 jobs:
   create-ami:
@@ -14,13 +14,14 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1   # your region
+          aws-region: ap-south-1
 
-      - name: Create AMI from EC2
-        id: create-ami
+      - name: Create AMI
+        id: create_ami
         run: |
-          INSTANCE_ID="i-xxxxxxxxxxxx"   # Your BBT-dev EC2 instance ID
-          AMI_NAME="BBT-dev-$(date +'%Y-%m-%d-%H-%M')"
+          INSTANCE_ID="i-xxxxxxxxxxxx" # replace with your EC2 ID
+          DATE=$(date +'%Y-%m-%d-%H-%M')
+          AMI_NAME="backup-ami-$DATE"
           
           AMI_ID=$(aws ec2 create-image \
             --instance-id $INSTANCE_ID \
@@ -28,6 +29,12 @@ jobs:
             --no-reboot \
             --query 'ImageId' \
             --output text)
+          
+          echo "AMI_ID=$AMI_ID" >> $GITHUB_ENV
+          echo "Created AMI: $AMI_ID"
 
-          echo "AMI created: $AMI_ID"
-          echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
+      - name: Tag AMI
+        run: |
+          aws ec2 create-tags \
+            --resources ${{ env.AMI_ID }} \
+            --tags Key=Name,Value="DailyBackup"

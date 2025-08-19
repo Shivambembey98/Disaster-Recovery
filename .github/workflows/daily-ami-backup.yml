@@ -1,0 +1,33 @@
+name: Daily AMI Backup
+
+on:
+  schedule:
+    - cron: "0 13 * * *"   # 7 PM IST = 13:00 UTC
+  workflow_dispatch:       # Allow manual trigger too
+
+jobs:
+  create-ami:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1   # your region
+
+      - name: Create AMI from EC2
+        id: create-ami
+        run: |
+          INSTANCE_ID="i-xxxxxxxxxxxx"   # Your BBT-dev EC2 instance ID
+          AMI_NAME="BBT-dev-$(date +'%Y-%m-%d-%H-%M')"
+          
+          AMI_ID=$(aws ec2 create-image \
+            --instance-id $INSTANCE_ID \
+            --name "$AMI_NAME" \
+            --no-reboot \
+            --query 'ImageId' \
+            --output text)
+
+          echo "AMI created: $AMI_ID"
+          echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT

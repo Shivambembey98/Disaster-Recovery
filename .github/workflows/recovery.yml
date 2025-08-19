@@ -1,0 +1,75 @@
+name: Recover EC2 from Latest AMI
+
+on:
+  workflow_dispatch: # manual run only
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Get Latest AMI ID
+        id: get_ami
+        run: |
+          AMI_ID=$(aws ec2 describe-images \
+            --owners self \
+            --filters "Name=tag:Name,Values=DailyBackup" \
+            --query 'Images | sort_by(@, &CreationDate)[-1].ImageId' \
+            --output text)
+
+          echo "AMI_ID=$AMI_ID" >> $GITHUB_ENV
+          echo "✅ Using AMI: $AMI_ID"
+
+      - name: Launch New EC2
+        id: launch
+        run: |
+          SUBNET_ID="subnet-xxxxxxx"
+          SG_ID="sg-xxxxxxx"
+          INSTANCE_TYPE="t2.micro"
+          KEY_NAME="my-keypair"
+
+          NEW_INSTANCE_ID=$(aws ec2 run-instances \
+            --image-id ${{ env.AMI_ID }} \
+            --count 1 \
+            --instance-type $INSTANCE_TYPE \
+            --key-name $KEY_NAME \
+            --subnet-id $SUBNET_ID \
+            --security-group-ids $SG_ID \
+            --query 'Instances[0].InstanceId' \
+            --output text)
+
+          echo "NEW_INSTANCE_ID=$NEW_INSTANCE_ID" >> $GITHUB_ENV
+          echo "✅ Launched new instance: $NEW_INSTANCE_ID"
+
+      - name: Wait for Instance Ready
+        run: |
+          aws ec2 wait instance-status-ok --instance-ids ${{ env.NEW_INSTANCE_ID }}
+          echo "✅ New instance is running and healthy."
+
+      - name: Attach Old Elastic IP
+        run: |
+          EIP_ALLOC_ID="eipalloc-xxxxxxxx"
+          aws ec2 associate-address \
+            --instance-id ${{ env.NEW_INSTANCE_ID }} \
+            --allocation-id $EIP_ALLOC_ID
+          echo "✅ Elastic IP attached."
+
+      - name: Restart Docker Containers
+        run: |
+          PUBLIC_IP=$(aws ec2 describe-instances \
+            --instance-id ${{ env.NEW_INSTANCE_ID }} \
+            --query "Reservations[0].Instances[0].PublicIpAddress" \
+            --output text)
+
+          echo "New instance Public IP: $PUBLIC_IP"
+
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/my-key.pem ubuntu@$PUBLIC_IP \
+            "sudo docker start \$(sudo docker ps -aq) && \
+             sudo systemctl restart nginx && \
+             echo '✅ Containers and Nginx restarted'"
